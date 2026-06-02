@@ -1,0 +1,38 @@
+[gd_scene load_steps=2 format=3 uid="uid://joystick001"]
+
+[ext_resource type="Script" path="res://scenes/ui/VirtualJoystick.gd" id="1"]
+
+[node name="VirtualJoystick" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1")
+
+[node name="Base" type="Control" parent="."]
+custom_minimum_size = Vector2(120, 120)
+position = Vector2(60, 820)
+size = Vector2(120, 120)
+
+[node name="Background" type="ColorRect" parent="Base"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(1, 1, 1, 0.15)
+
+[node name="Knob" type="Control" parent="Base"]
+custom_minimum_size = Vector2(52, 52)
+position = Vector2(34, 34)
+size = Vector2(52, 52)
+
+[node name="KnobVisual" type="ColorRect" parent="Base/Knob"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(1, 1, 1, 0.4)

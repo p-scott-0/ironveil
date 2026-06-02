@@ -6,11 +6,17 @@ config_version=5
 
 [application]
 
-config/name="FactorioMobile"
+config/name="Ironveil"
 config/description="2D factory automation game with exploration and combat"
 run/main_scene="res://scenes/world/World.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://assets/icon.svg"
+
+[autoload]
+
+GameManager="*res://scripts/autoload/GameManager.gd"
+Inventory="*res://scripts/autoload/Inventory.gd"
+SaveManager="*res://scripts/autoload/SaveManager.gd"
 
 [display]
 
