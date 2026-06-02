@@ -1,0 +1,86 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:  # allows manual trigger from GitHub UI
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Install Godot ─────────────────────────────────────────────────────
+      - name: Download & install Godot 4.6.3
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/4.6.3-stable/Godot_v4.6.3-stable_macos.universal.zip
+          unzip -q Godot_v4.6.3-stable_macos.universal.zip
+          sudo mv Godot.app /Applications/Godot.app
+          echo "Godot installed: $(/Applications/Godot.app/Contents/MacOS/Godot --version)"
+
+      # ── 3. Install export templates ──────────────────────────────────────────
+      - name: Download & install iOS export templates
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/4.6.3-stable/Godot_v4.6.3-stable_export_templates.tpz
+          TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/4.6.3.stable"
+          mkdir -p "$TEMPLATE_DIR"
+          unzip -q Godot_v4.6.3-stable_export_templates.tpz -d /tmp/godot_templates
+          mv /tmp/godot_templates/templates/* "$TEMPLATE_DIR/"
+          echo "Templates installed to: $TEMPLATE_DIR"
+
+      # ── 4. Export Xcode project from Godot ───────────────────────────────────
+      - name: Export iOS Xcode project
+        run: |
+          mkdir -p build/ios
+          /Applications/Godot.app/Contents/MacOS/Godot \
+            --headless \
+            --export-debug "iOS" \
+            "$GITHUB_WORKSPACE/build/ios/Ironveil" \
+            --path "$GITHUB_WORKSPACE"
+
+      # ── 5. Build unsigned .ipa (AltStore re-signs on device) ─────────────────
+      - name: Build Xcode archive (unsigned)
+        run: |
+          cd build/ios
+          xcodebuild \
+            -project Ironveil.xcodeproj \
+            -scheme Ironveil \
+            -configuration Debug \
+            -sdk iphoneos \
+            -archivePath "$GITHUB_WORKSPACE/build/Ironveil.xcarchive" \
+            archive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty || true
+
+      - name: Package .ipa from archive
+        run: |
+          ARCHIVE="$GITHUB_WORKSPACE/build/Ironveil.xcarchive"
+          APP_PATH=$(find "$ARCHIVE/Products" -name "*.app" | head -1)
+          mkdir -p /tmp/Payload
+          cp -r "$APP_PATH" /tmp/Payload/Ironveil.app
+          cd /tmp
+          zip -qr "$GITHUB_WORKSPACE/build/Ironveil.ipa" Payload
+          echo "IPA size: $(du -sh "$GITHUB_WORKSPACE/build/Ironveil.ipa" | cut -f1)"
+
+      # ── 6. Upload artifact ───────────────────────────────────────────────────
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ironveil-iOS-${{ github.run_number }}
+          path: build/Ironveil.ipa
+          retention-days: 30
+
+      - name: Build summary
+        run: |
+          echo "## ✅ Build complete" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the IPA from the **Artifacts** section of this run." >> $GITHUB_STEP_SUMMARY
+          echo "Install via AltStore on your iPhone." >> $GITHUB_STEP_SUMMARY
