@@ -17,6 +17,7 @@ config/icon="res://assets/icon.svg"
 GameManager="*res://scripts/autoload/GameManager.gd"
 Inventory="*res://scripts/autoload/Inventory.gd"
 SaveManager="*res://scripts/autoload/SaveManager.gd"
+TileTypes="*res://scripts/world/TileTypes.gd"
 
 [display]
 

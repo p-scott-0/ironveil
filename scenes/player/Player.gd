@@ -9,10 +9,13 @@ var move_direction: Vector2 = Vector2.ZERO
 @onready var health_component: Node = $HealthComponent
 
 func _physics_process(_delta: float) -> void:
-	velocity = move_direction.normalized() * SPEED
+	# Keyboard input blends with joystick so PC testing works without touch
+	var kb := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var dir := (move_direction + kb).normalized() if (move_direction + kb).length() > 0 else Vector2.ZERO
+	velocity = dir * SPEED
 	move_and_slide()
-	if move_direction != Vector2.ZERO:
-		sprite.flip_h = move_direction.x < 0
+	if dir != Vector2.ZERO:
+		sprite.flip_h = dir.x < 0
 
 func take_damage(amount: int) -> void:
 	health_component.take_damage(amount)
