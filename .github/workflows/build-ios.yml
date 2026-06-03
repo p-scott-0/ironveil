@@ -70,7 +70,22 @@ jobs:
           echo "Signing identities available:"
           security find-identity -v -p codesigning "$KEYCHAIN"
 
-      # ── 5. Export Xcode project from Godot ───────────────────────────────────
+      # ── 5. Diagnose environment before export ────────────────────────────────
+      - name: Diagnose Xcode and template environment
+        run: |
+          echo "=== Xcode ==="
+          xcode-select --print-path
+          xcodebuild -version
+          echo "=== iOS SDK ==="
+          xcrun --sdk iphoneos --show-sdk-version || echo "iOS SDK not found"
+          echo "=== Godot export templates ==="
+          TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/4.6.3.stable"
+          ls -la "$TEMPLATE_DIR" | grep -i ios || echo "No iOS templates found!"
+          ls "$TEMPLATE_DIR" | head -30
+          echo "=== Signing identities ==="
+          security find-identity -v -p codesigning || echo "None found"
+
+      # ── 6. Export Xcode project from Godot ───────────────────────────────────
       - name: Export iOS Xcode project
         run: |
           mkdir -p build/ios
