@@ -1,9 +1,7 @@
 name: Build iOS IPA
 
 on:
-  push:
-    branches: [master]
-  workflow_dispatch:
+  workflow_dispatch:  # manual trigger only — iOS CI paused, revisit with Codemagic
 
 permissions:
   contents: write
