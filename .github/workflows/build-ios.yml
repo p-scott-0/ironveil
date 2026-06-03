@@ -32,15 +32,7 @@ jobs:
           mv /tmp/godot_templates/templates/* "$TEMPLATE_DIR/"
           echo "Templates installed to: $TEMPLATE_DIR"
 
-      # ── 4. Inject Team ID and export Xcode project ───────────────────────────
-      - name: Inject Apple Team ID into export preset
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          sed -i '' "s/application\/app_store_team_id=\"\"/application\/app_store_team_id=\"$APPLE_TEAM_ID\"/" \
-            "$GITHUB_WORKSPACE/export_presets.cfg"
-          echo "Team ID injected"
-
+      # ── 4. Export Xcode project from Godot ───────────────────────────────────
       - name: Export iOS Xcode project
         run: |
           mkdir -p build/ios
