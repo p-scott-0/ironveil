@@ -3,7 +3,12 @@ name: Build iOS IPA
 on:
   push:
     branches: [master]
-  workflow_dispatch:  # allows manual trigger from GitHub UI
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build-ios:
@@ -30,24 +35,52 @@ jobs:
           mkdir -p "$TEMPLATE_DIR"
           unzip -q Godot_v4.6.3-stable_export_templates.tpz -d /tmp/godot_templates
           mv /tmp/godot_templates/templates/* "$TEMPLATE_DIR/"
-          echo "Templates installed to: $TEMPLATE_DIR"
 
-      # ── 4. Export Xcode project from Godot ───────────────────────────────────
+      # ── 4. Create dummy signing certificate so Godot passes keychain check ───
+      - name: Create dummy signing certificate
+        run: |
+          # Godot 4.6 validates against the macOS keychain even for unsigned builds.
+          # We create a self-signed "iPhone Developer" cert to satisfy that check.
+          # xcodebuild still builds with CODE_SIGNING_ALLOWED=NO.
+          KEYCHAIN="build.keychain"
+          KEYCHAIN_PASS="ci"
+
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security set-keychain-settings -t 3600 "$KEYCHAIN"
+
+          # Self-signed cert with iPhone Developer CN
+          openssl req -x509 -newkey rsa:2048 -days 1 \
+            -subj "/CN=iPhone Developer/O=CI/C=US" \
+            -keyout /tmp/ci_key.pem -out /tmp/ci_cert.pem \
+            -passout pass:"$KEYCHAIN_PASS" 2>/dev/null
+
+          openssl pkcs12 -export \
+            -inkey /tmp/ci_key.pem -in /tmp/ci_cert.pem \
+            -out /tmp/ci_cert.p12 \
+            -passin pass:"$KEYCHAIN_PASS" -passout pass:"$KEYCHAIN_PASS"
+
+          security import /tmp/ci_cert.p12 -k "$KEYCHAIN" \
+            -P "$KEYCHAIN_PASS" -T /usr/bin/codesign -T /usr/bin/xcodebuild
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN"
+
+          echo "Signing identities available:"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      # ── 5. Export Xcode project from Godot ───────────────────────────────────
       - name: Export iOS Xcode project
         run: |
           mkdir -p build/ios
           /Applications/Godot.app/Contents/MacOS/Godot \
             --headless \
-            --verbose \
             --export-debug "iOS" \
             "$GITHUB_WORKSPACE/build/ios/Ironveil" \
-            --path "$GITHUB_WORKSPACE" 2>&1 | tee /tmp/godot_export.log || true
-          echo "--- Export log tail ---"
-          tail -50 /tmp/godot_export.log
-          # Fail if export actually failed
-          grep -q "Project export for preset.*failed" /tmp/godot_export.log && exit 1 || true
+            --path "$GITHUB_WORKSPACE"
 
-      # ── 5. Build unsigned .ipa (AltStore re-signs on device) ─────────────────
+      # ── 6. Build unsigned .ipa ───────────────────────────────────────────────
       - name: Build Xcode archive (unsigned)
         run: |
           cd build/ios
@@ -63,29 +96,74 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty || true
 
-      - name: Package .ipa from archive
+      - name: Package .ipa
         run: |
           ARCHIVE="$GITHUB_WORKSPACE/build/Ironveil.xcarchive"
           APP_PATH=$(find "$ARCHIVE/Products" -name "*.app" | head -1)
           mkdir -p /tmp/Payload
           cp -r "$APP_PATH" /tmp/Payload/Ironveil.app
-          cd /tmp
-          zip -qr "$GITHUB_WORKSPACE/build/Ironveil.ipa" Payload
+          cd /tmp && zip -qr "$GITHUB_WORKSPACE/build/Ironveil.ipa" Payload
+          IPA_SIZE=$(stat -f%z "$GITHUB_WORKSPACE/build/Ironveil.ipa")
+          echo "IPA_SIZE=$IPA_SIZE" >> $GITHUB_ENV
           echo "IPA size: $(du -sh "$GITHUB_WORKSPACE/build/Ironveil.ipa" | cut -f1)"
 
-      # ── 6. Upload artifact ───────────────────────────────────────────────────
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Ironveil-iOS-${{ github.run_number }}
-          path: build/Ironveil.ipa
-          retention-days: 30
+      # ── 7. Create versioned GitHub Release ───────────────────────────────────
+      - name: Set version tag
+        run: |
+          VERSION="0.1.${{ github.run_number }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "TAG=v$VERSION" >> $GITHUB_ENV
 
+      - name: Create GitHub Release and upload IPA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$TAG" \
+            --repo p-scott-0/ironveil \
+            --title "Ironveil $VERSION" \
+            --notes "Automated build from commit ${{ github.sha }}" \
+            "$GITHUB_WORKSPACE/build/Ironveil.ipa#Ironveil.ipa"
+
+      # ── 8. Update AltStore source feed ───────────────────────────────────────
+      - name: Update AltStore apps.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DOWNLOAD_URL="https://github.com/p-scott-0/ironveil/releases/download/$TAG/Ironveil.ipa"
+          BUILD_DATE=$(date -u +"%Y-%m-%d")
+
+          python3 - <<EOF
+          import json
+          with open("$GITHUB_WORKSPACE/altstore/apps.json") as f:
+              data = json.load(f)
+          new_version = {
+              "version": "$VERSION",
+              "date": "$BUILD_DATE",
+              "localizedDescription": "Build #${{ github.run_number }} — commit ${{ github.sha }}",
+              "downloadURL": "$DOWNLOAD_URL",
+              "size": $IPA_SIZE
+          }
+          data["apps"][0]["versions"].insert(0, new_version)
+          data["apps"][0]["versions"] = data["apps"][0]["versions"][:10]
+          with open("$GITHUB_WORKSPACE/altstore/apps.json", "w") as f:
+              json.dump(data, f, indent=2)
+          print("apps.json updated with version $VERSION")
+          EOF
+
+      - name: Deploy apps.json to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./altstore
+          keep_files: true
+
+      # ── 9. Summary ───────────────────────────────────────────────────────────
       - name: Build summary
         run: |
-          echo "## ✅ Build complete" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ Ironveil $VERSION built successfully" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | $VERSION |" >> $GITHUB_STEP_SUMMARY
+          echo "| **IPA** | [Download](https://github.com/p-scott-0/ironveil/releases/tag/$TAG) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download the IPA from the **Artifacts** section of this run." >> $GITHUB_STEP_SUMMARY
-          echo "Install via AltStore on your iPhone." >> $GITHUB_STEP_SUMMARY
+          echo "**AltStore Source:** \`https://p-scott-0.github.io/ironveil/apps.json\`" >> $GITHUB_STEP_SUMMARY
