@@ -1,0 +1,24 @@
+# Force LF line endings for all text files on all platforms
+* text=auto eol=lf
+
+# Explicitly LF for Godot files
+*.gd text eol=lf
+*.cfg text eol=lf
+*.tscn text eol=lf
+*.tres text eol=lf
+*.import text eol=lf
+*.gdshader text eol=lf
+
+# Workflows must also be LF
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# Binaries — no conversion
+*.png binary
+*.jpg binary
+*.wav binary
+*.ogg binary
+*.ttf binary
+*.otf binary
