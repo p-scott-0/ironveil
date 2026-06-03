@@ -39,8 +39,19 @@ jobs:
           mv /tmp/godot_templates/templates/* "$TEMPLATE_DIR/"
           ls "$TEMPLATE_DIR" | grep ios
 
-      - name: Create trusted signing identity
+      - name: Fix Xcode path and create signing identity
         run: |
+          # GitHub runners use versioned Xcode paths — symlink to standard location
+          XCODE_PATH=$(xcode-select --print-path | sed 's|/Contents/Developer||')
+          echo "Xcode at: $XCODE_PATH"
+          if [ ! -e /Applications/Xcode.app ]; then
+            sudo ln -sf "$XCODE_PATH" /Applications/Xcode.app
+            echo "Symlinked Xcode.app"
+          fi
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcode-select --print-path
+
+          # Create signing cert with team OU matching preset team ID
           cat > /tmp/cert.conf << 'CONF'
           [req]
           distinguished_name = req_dn
@@ -48,6 +59,7 @@ jobs:
           prompt = no
           [req_dn]
           CN = iPhone Developer
+          OU = IRONVLTEAM
           O = CI Build
           C = US
           [v3_req]
