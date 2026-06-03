@@ -38,9 +38,14 @@ jobs:
           mkdir -p build/ios
           /Applications/Godot.app/Contents/MacOS/Godot \
             --headless \
+            --verbose \
             --export-debug "iOS" \
             "$GITHUB_WORKSPACE/build/ios/Ironveil" \
-            --path "$GITHUB_WORKSPACE"
+            --path "$GITHUB_WORKSPACE" 2>&1 | tee /tmp/godot_export.log || true
+          echo "--- Export log tail ---"
+          tail -50 /tmp/godot_export.log
+          # Fail if export actually failed
+          grep -q "Project export for preset.*failed" /tmp/godot_export.log && exit 1 || true
 
       # ── 5. Build unsigned .ipa (AltStore re-signs on device) ─────────────────
       - name: Build Xcode archive (unsigned)
