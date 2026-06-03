@@ -57,53 +57,78 @@ jobs:
           TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/4.6.3.stable"
           PROJ_DIR="$GITHUB_WORKSPACE/build/ios"
           mkdir -p "$PROJ_DIR"
-
-          # Extract the iOS template
           unzip -q "$TEMPLATE_DIR/ios.zip" -d "$PROJ_DIR"
 
-          echo "=== Template top-level ==="
-          ls "$PROJ_DIR"
+          echo "=== Template top-level ===" && ls "$PROJ_DIR"
 
-          # Find the xcodeproj
+          # Show pbxproj tokens before replacement (first 60 lines)
+          PBXPROJ=$(find "$PROJ_DIR" -name "project.pbxproj" | head -1)
+          echo "=== pbxproj tokens ===" && grep -o '\$[a-z_]*' "$PBXPROJ" | sort -u || true
+
+          # Use Python for reliable $ substitution (sed mangles $ in bash)
+          python3 << 'PYEOF'
+          import os, glob, re
+
+          proj_dir = os.environ['GITHUB_WORKSPACE'] + '/build/ios'
+          app     = os.environ['APP_NAME']
+          bndl    = os.environ['BUNDLE_ID']
+          ver_s   = os.environ['VERSION_SHORT']
+
+          REPLACEMENTS = [
+              ('$binary',                 app),
+              ('$name',                   app),
+              ('$info',                   bndl),
+              ('$short_version',          ver_s),
+              ('$version',                '1'),
+              ('$team_id',                '0000000000'),
+              ('$export_method',          'development'),
+              ('$targeted_device_family', '1,2'),
+              ('$interface_orientations', ''),
+              ('$camera_usage_description', ''),
+              ('$microphone_usage_description', ''),
+              ('$photolibrary_usage_description', ''),
+              ('godot_apple_embedded',    app),
+              ('godot_ios',               app),
+          ]
+
+          TEXT_EXTS = {'.pbxproj','.plist','.mm','.m','.h','.swift',
+                       '.entitlements','.xcscheme','.xcworkspacedata','.xcsettings'}
+
+          for root, dirs, files in os.walk(proj_dir):
+              for fname in files:
+                  if os.path.splitext(fname)[1] not in TEXT_EXTS:
+                      continue
+                  fpath = os.path.join(root, fname)
+                  try:
+                      with open(fpath, 'r', errors='replace') as f:
+                          content = f.read()
+                      orig = content
+                      for old, new in REPLACEMENTS:
+                          content = content.replace(old, new)
+                      if content != orig:
+                          with open(fpath, 'w') as f:
+                              f.write(content)
+                          print(f'  patched: {os.path.relpath(fpath, proj_dir)}')
+                  except Exception as e:
+                      print(f'  skipped {fname}: {e}')
+          PYEOF
+
+          # Rename xcodeproj & source files
           XCPROJ=$(find "$PROJ_DIR" -maxdepth 2 -name "*.xcodeproj" | head -1)
-          echo "Found xcodeproj: $XCPROJ"
-
-          # Rename xcodeproj to our app name
-          XCPROJ_DIR=$(dirname "$XCPROJ")
-          NEW_XCPROJ="$XCPROJ_DIR/$APP_NAME.xcodeproj"
-          mv "$XCPROJ" "$NEW_XCPROJ"
-
-          # Replace $binary placeholder throughout all text files
-          find "$PROJ_DIR" \( -name "*.pbxproj" -o -name "*.plist" -o -name "*.mm" \
-            -o -name "*.m" -o -name "*.h" -o -name "*.swift" -o -name "*.entitlements" \
-            -o -name "*.xcscheme" \) | while read f; do
-            sed -i '' "s/\$binary/$APP_NAME/g" "$f" 2>/dev/null || true
-            sed -i '' "s/godot_apple_embedded/$APP_NAME/g" "$f" 2>/dev/null || true
-            sed -i '' "s/godot_ios/$APP_NAME/g" "$f" 2>/dev/null || true
+          if [ -n "$XCPROJ" ]; then
+            XCPROJ_PARENT=$(dirname "$XCPROJ")
+            mv "$XCPROJ" "$XCPROJ_PARENT/$APP_NAME.xcodeproj"
+            echo "Renamed xcodeproj → $APP_NAME.xcodeproj"
+          fi
+          find "$PROJ_DIR" -name "godot_apple_embedded*" -o -name "godot_ios*" | while read f; do
+            newf=$(echo "$f" | sed "s/godot_apple_embedded/$APP_NAME/g;s/godot_ios/$APP_NAME/g")
+            [ "$f" != "$newf" ] && mv "$f" "$newf" 2>/dev/null && echo "  renamed: $(basename $newf)"
           done
 
-          # Rename source files that reference the old binary name
-          find "$PROJ_DIR" -name "godot_apple_embedded*" | while read f; do
-            newname=$(echo "$f" | sed "s/godot_apple_embedded/$APP_NAME/g")
-            mv "$f" "$newname" 2>/dev/null || true
-          done
-          find "$PROJ_DIR" -name "godot_ios*" | while read f; do
-            newname=$(echo "$f" | sed "s/godot_ios/$APP_NAME/g")
-            mv "$f" "$newname" 2>/dev/null || true
-          done
-
-          # Update bundle identifier in Info.plist
-          find "$PROJ_DIR" -name "Info.plist" | while read f; do
-            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$f" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$f" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_SHORT" "$f" 2>/dev/null || true
-          done
-
-          # Copy PCK into the project
+          # Copy PCK into project
           cp "$GITHUB_WORKSPACE/build/pck/$APP_NAME.pck" "$PROJ_DIR/$APP_NAME.pck"
 
-          echo "=== Final project structure ==="
-          find "$PROJ_DIR" -maxdepth 3 -name "*.xcodeproj" -o -name "*.plist" | head -20
+          echo "=== Final structure ===" && find "$PROJ_DIR" -maxdepth 3 | head -30
 
       # ── 6. Build unsigned .ipa ───────────────────────────────────────────────
       - name: Build Xcode archive (unsigned)
