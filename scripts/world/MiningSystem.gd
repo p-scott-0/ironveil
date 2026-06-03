@@ -68,7 +68,7 @@ func _on_tick(tick: int) -> void:
 
 func _finish_mining() -> void:
 	var type     := _get_type(target_cell)
-	var item_id  := TileTypes.DROP.get(type, "")
+	var item_id: String = TileTypes.DROP.get(type, "")
 
 	# Remove the tile — replace with ground
 	_tile_map.set_cell(target_cell, 0, Vector2i(0, 0))  # source 0 = GROUND
