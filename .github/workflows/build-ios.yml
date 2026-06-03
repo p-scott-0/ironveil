@@ -23,19 +23,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download & install Godot 4.6.3
+      - name: Download & install Godot 4.3 (stable iOS CI export)
         run: |
-          wget -q https://github.com/godotengine/godot/releases/download/4.6.3-stable/Godot_v4.6.3-stable_macos.universal.zip
-          unzip -q Godot_v4.6.3-stable_macos.universal.zip
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_macos.universal.zip
+          unzip -q Godot_v4.3-stable_macos.universal.zip
           sudo mv Godot.app /Applications/Godot.app
+          echo "Godot: $(/Applications/Godot.app/Contents/MacOS/Godot --version)"
 
-      - name: Download & install export templates
+      - name: Download & install Godot 4.3 export templates
         run: |
-          wget -q https://github.com/godotengine/godot/releases/download/4.6.3-stable/Godot_v4.6.3-stable_export_templates.tpz
-          TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/4.6.3.stable"
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
+          TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/4.3.stable"
           mkdir -p "$TEMPLATE_DIR"
-          unzip -q Godot_v4.6.3-stable_export_templates.tpz -d /tmp/godot_templates
+          unzip -q Godot_v4.3-stable_export_templates.tpz -d /tmp/godot_templates
           mv /tmp/godot_templates/templates/* "$TEMPLATE_DIR/"
+          ls "$TEMPLATE_DIR" | grep ios
 
       - name: Create trusted signing identity
         run: |
