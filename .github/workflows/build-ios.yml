@@ -95,6 +95,11 @@ jobs:
             --headless \
             --export-debug "iOS" \
             "$GITHUB_WORKSPACE/build/ios/Ironveil" \
+            --path "$GITHUB_WORKSPACE" \
+          || /Applications/Godot.app/Contents/MacOS/Godot \
+            --headless \
+            --export-debug "Apple Embedded" \
+            "$GITHUB_WORKSPACE/build/ios/Ironveil" \
             --path "$GITHUB_WORKSPACE"
 
       # ── 6. Build unsigned .ipa ───────────────────────────────────────────────
