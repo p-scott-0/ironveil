@@ -25,7 +25,7 @@ func _input(event: InputEvent) -> void:
 			_release()
 
 	elif event is InputEventScreenDrag and event.index == _touch_index:
-		var offset := event.position - _base_pos
+		var offset: Vector2 = event.position - _base_pos
 		var clamped := offset.limit_length(RADIUS)
 		knob.position = clamped - knob.size / 2.0 + base.size / 2.0
 		var direction := Vector2.ZERO if offset.length() < DEAD_ZONE else clamped / RADIUS
