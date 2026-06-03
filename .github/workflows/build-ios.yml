@@ -35,46 +35,67 @@ jobs:
           unzip -q Godot_v4.6.3-stable_export_templates.tpz -d /tmp/godot_templates
           mv /tmp/godot_templates/templates/* "$TEMPLATE_DIR/"
 
-      # ── 4. Export game data pack (no signing validation) ─────────────────────
-      - name: Export game data (.pck)
+      # ── 4. Create trusted signing identity (sudo available on GH runners) ────
+      - name: Create trusted signing identity
+        run: |
+          # Create a self-signed cert with code signing extensions
+          cat > /tmp/cert.conf << 'CONF'
+          [req]
+          distinguished_name = req_dn
+          x509_extensions = v3_req
+          prompt = no
+          [req_dn]
+          CN = iPhone Developer
+          O = CI Build
+          C = US
+          [v3_req]
+          keyUsage = critical, digitalSignature
+          extendedKeyUsage = critical, codeSigning
+          CONF
+
+          openssl req -x509 -newkey rsa:2048 -days 1 \
+            -config /tmp/cert.conf \
+            -keyout /tmp/ci_key.pem \
+            -out /tmp/ci_cert.pem \
+            -nodes 2>/dev/null
+
+          # Trust in system keychain via sudo
+          sudo security add-trusted-cert \
+            -d -r trustRoot \
+            -p codeSign \
+            -k /Library/Keychains/System.keychain \
+            /tmp/ci_cert.pem
+
+          # Import private key + cert to login keychain
+          openssl pkcs12 -export \
+            -inkey /tmp/ci_key.pem \
+            -in /tmp/ci_cert.pem \
+            -out /tmp/ci_cert.p12 \
+            -passout pass:ci
+
+          security import /tmp/ci_cert.p12 \
+            -k ~/Library/Keychains/login.keychain-db \
+            -P "ci" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/xcodebuild
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "" \
+            ~/Library/Keychains/login.keychain-db 2>/dev/null || true
+
+          echo "=== Signing identities ==="
+          security find-identity -v -p codesigning
+
+      # ── 5. Export Xcode project ───────────────────────────────────────────────
+      - name: Export iOS Xcode project
         run: |
           mkdir -p build/ios
           /Applications/Godot.app/Contents/MacOS/Godot \
             --headless \
-            --export-pack "iOS" \
-            "$GITHUB_WORKSPACE/build/ios/Ironveil.pck" \
+            --export-debug "iOS" \
+            "$GITHUB_WORKSPACE/build/ios/Ironveil" \
             --path "$GITHUB_WORKSPACE"
-          echo "PCK size: $(du -sh build/ios/Ironveil.pck)"
-
-      # ── 5. Set up Xcode project from iOS template ─────────────────────────────
-      - name: Set up Xcode project from template
-        run: |
-          TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/4.6.3.stable"
-          mkdir -p /tmp/ios_template
-          unzip -q "$TEMPLATE_DIR/ios.zip" -d /tmp/ios_template
-
-          echo "=== Template contents ==="
-          ls /tmp/ios_template/
-
-          # Find and copy the xcodeproj
-          XCODEPROJ=$(find /tmp/ios_template -name "*.xcodeproj" | head -1)
-          echo "Found xcodeproj: $XCODEPROJ"
-
-          # Copy entire template to build dir
-          cp -r /tmp/ios_template/. "$GITHUB_WORKSPACE/build/ios/"
-
-          # Rename godot_ios → Ironveil throughout
-          if [ -d "$GITHUB_WORKSPACE/build/ios/godot_ios.xcodeproj" ]; then
-            mv "$GITHUB_WORKSPACE/build/ios/godot_ios.xcodeproj" \
-               "$GITHUB_WORKSPACE/build/ios/Ironveil.xcodeproj"
-          fi
-
-          # Copy game data into project
-          cp "$GITHUB_WORKSPACE/build/ios/Ironveil.pck" \
-             "$GITHUB_WORKSPACE/build/ios/Ironveil.pck" 2>/dev/null || true
-
-          echo "=== Build dir contents ==="
-          ls "$GITHUB_WORKSPACE/build/ios/"
 
       # ── 6. Build unsigned .ipa ───────────────────────────────────────────────
       - name: Build Xcode archive (unsigned)
@@ -82,7 +103,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/build/ios"
           PROJ=$(find . -name "*.xcodeproj" | head -1)
           SCHEME=$(basename "$PROJ" .xcodeproj)
-          echo "Building project: $PROJ scheme: $SCHEME"
+          echo "Building: $PROJ"
 
           xcodebuild \
             -project "$PROJ" \
@@ -94,14 +115,13 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            2>&1 | tail -50
+            DEVELOPMENT_TEAM=""
 
       - name: Package .ipa
         run: |
           ARCHIVE="$GITHUB_WORKSPACE/build/Ironveil.xcarchive"
           APP_PATH=$(find "$ARCHIVE/Products" -name "*.app" | head -1)
-          echo "App found: $APP_PATH"
+          echo "App: $APP_PATH"
           mkdir -p /tmp/Payload
           cp -r "$APP_PATH" /tmp/Payload/Ironveil.app
           cd /tmp && zip -qr "$GITHUB_WORKSPACE/build/Ironveil.ipa" Payload
@@ -109,24 +129,23 @@ jobs:
           echo "IPA_SIZE=$IPA_SIZE" >> $GITHUB_ENV
           echo "IPA size: $(du -sh "$GITHUB_WORKSPACE/build/Ironveil.ipa" | cut -f1)"
 
-      # ── 7. Create versioned GitHub Release ───────────────────────────────────
+      # ── 7. Release & AltStore feed ───────────────────────────────────────────
       - name: Set version tag
         run: |
           VERSION="0.1.${{ github.run_number }}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "TAG=v$VERSION" >> $GITHUB_ENV
 
-      - name: Create GitHub Release and upload IPA
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$TAG" \
             --repo p-scott-0/ironveil \
             --title "Ironveil $VERSION" \
-            --notes "Automated build from commit ${{ github.sha }}" \
+            --notes "Build #${{ github.run_number }} — ${{ github.sha }}" \
             "$GITHUB_WORKSPACE/build/Ironveil.ipa#Ironveil.ipa"
 
-      # ── 8. Update AltStore source feed ───────────────────────────────────────
       - name: Update AltStore apps.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -137,29 +156,24 @@ jobs:
           import json
           with open("$GITHUB_WORKSPACE/altstore/apps.json") as f:
               data = json.load(f)
-          new_version = {
-              "version": "$VERSION",
-              "date": "$BUILD_DATE",
-              "localizedDescription": "Build #${{ github.run_number }} — commit ${{ github.sha }}",
-              "downloadURL": "$DOWNLOAD_URL",
-              "size": $IPA_SIZE
-          }
-          data["apps"][0]["versions"].insert(0, new_version)
+          data["apps"][0]["versions"].insert(0, {
+              "version": "$VERSION", "date": "$BUILD_DATE",
+              "localizedDescription": "Build #${{ github.run_number }}",
+              "downloadURL": "$DOWNLOAD_URL", "size": $IPA_SIZE
+          })
           data["apps"][0]["versions"] = data["apps"][0]["versions"][:10]
           with open("$GITHUB_WORKSPACE/altstore/apps.json", "w") as f:
               json.dump(data, f, indent=2)
           EOF
 
-      - name: Deploy apps.json to GitHub Pages
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./altstore
           keep_files: true
 
-      # ── 9. Summary ───────────────────────────────────────────────────────────
       - name: Build summary
         run: |
           echo "## ✅ Ironveil $VERSION" >> $GITHUB_STEP_SUMMARY
           echo "| IPA | [Download](https://github.com/p-scott-0/ironveil/releases/tag/$TAG) |" >> $GITHUB_STEP_SUMMARY
-          echo "| AltStore Source | \`https://p-scott-0.github.io/ironveil/apps.json\` |" >> $GITHUB_STEP_SUMMARY
