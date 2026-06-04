@@ -40,7 +40,7 @@ func _build_tileset() -> void:
 
 	for type in TileTypes.Type.values():
 		var source := TileSetAtlasSource.new()
-		source.texture = _make_color_texture(TileTypes.COLORS[type])
+		source.texture = _make_tile_texture(type)
 		source.texture_region_size = Vector2i(TILE_SIZE, TILE_SIZE)
 		source.create_tile(Vector2i(0, 0))
 
@@ -59,16 +59,83 @@ func _build_tileset() -> void:
 
 	_tile_map.tile_set = ts
 
-func _make_color_texture(color: Color) -> ImageTexture:
-	var img    := Image.create(TILE_SIZE, TILE_SIZE, false, Image.FORMAT_RGBA8)
-	img.fill(color)
-	var border := color.darkened(0.25)
+# ── Tile textures ──────────────────────────────────────────────────────────────
+
+func _make_tile_texture(type: TileTypes.Type) -> ImageTexture:
+	var img := Image.create(TILE_SIZE, TILE_SIZE, false, Image.FORMAT_RGBA8)
+
+	match type:
+		TileTypes.Type.GROUND:
+			_draw_ground(img)
+		TileTypes.Type.WATER:
+			_draw_water(img)
+		TileTypes.Type.STONE:
+			_draw_ore(img, Color(0.47, 0.62, 0.35), Color(0.58, 0.58, 0.58),
+					  Color(0.72, 0.72, 0.72))
+		TileTypes.Type.IRON:
+			_draw_ore(img, Color(0.47, 0.62, 0.35), Color(0.72, 0.42, 0.18),
+					  Color(0.92, 0.65, 0.30))
+		TileTypes.Type.COAL:
+			_draw_ore(img, Color(0.47, 0.62, 0.35), Color(0.15, 0.15, 0.15),
+					  Color(0.35, 0.35, 0.38))
+
+	return ImageTexture.create_from_image(img)
+
+func _draw_ground(img: Image) -> void:
+	var base   := Color(0.47, 0.62, 0.35)
+	var detail := base.darkened(0.12)
+	img.fill(base)
+	# Subtle random-ish texture dots
+	for pos in [[4,7],[10,3],[18,12],[25,6],[8,20],[21,24],[14,17],[28,14],[6,26],[24,28]]:
+		img.set_pixel(pos[0], pos[1], detail)
+	_draw_border(img, base)
+
+func _draw_water(img: Image) -> void:
+	var base  := Color(0.25, 0.45, 0.75)
+	var light := base.lightened(0.15)
+	img.fill(base)
+	# Horizontal wave lines
+	for x in range(2, 30):
+		var y: int = 10 + (2 if x % 8 < 4 else 0)
+		img.set_pixel(x, y,     light)
+		img.set_pixel(x, y + 1, light)
+		var y2: int = 22 + (2 if x % 8 < 4 else 0)
+		img.set_pixel(x, y2,     light)
+		img.set_pixel(x, y2 + 1, light)
+	_draw_border(img, base)
+
+func _draw_ore(img: Image, ground: Color, ore_dark: Color, ore_light: Color) -> void:
+	img.fill(ground)
+	# Draw 4 ore nuggets at fixed positions for consistent look
+	var nuggets: Array = [
+		[6, 6], [18, 5], [7, 18], [20, 19]
+	]
+	for n in nuggets:
+		var ox: int = n[0]
+		var oy: int = n[1]
+		# 5×5 nugget with rounded corners and highlight
+		for dx in range(5):
+			for dy in range(5):
+				# Skip corners for rounded look
+				if (dx == 0 or dx == 4) and (dy == 0 or dy == 4):
+					continue
+				var c := ore_light if (dx == 1 and dy == 1) else ore_dark
+				img.set_pixel(ox + dx, oy + dy, c)
+	# Small pickaxe indicator: top-right corner (24,4) — three pixels
+	var icon := Color(1.0, 1.0, 0.85, 0.85)
+	img.set_pixel(25, 4, icon)
+	img.set_pixel(26, 5, icon)
+	img.set_pixel(27, 6, icon)
+	img.set_pixel(24, 5, icon)
+	_draw_border(img, ground)
+
+func _draw_border(img: Image, base: Color) -> void:
+	var border := base.darkened(0.22)
 	for i in TILE_SIZE:
 		img.set_pixel(i, 0,             border)
 		img.set_pixel(i, TILE_SIZE - 1, border)
 		img.set_pixel(0, i,             border)
 		img.set_pixel(TILE_SIZE - 1, i, border)
-	return ImageTexture.create_from_image(img)
 
 # ── Generation ─────────────────────────────────────────────────────────────────
 

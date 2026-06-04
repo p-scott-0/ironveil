@@ -20,9 +20,9 @@ const COLORS: Dictionary = {
 const PASSABLE: Dictionary = {
 	Type.GROUND : true,
 	Type.WATER  : false,
-	Type.STONE  : false,
-	Type.IRON   : false,
-	Type.COAL   : false,
+	Type.STONE  : true,
+	Type.IRON   : true,
+	Type.COAL   : true,
 }
 
 # Hits per extraction cycle — higher = slower manual mining, same cost for automation
