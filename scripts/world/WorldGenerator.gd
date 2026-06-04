@@ -99,9 +99,9 @@ func _generate() -> void:
 				# Distance from spawn drives patch abundance.
 				# Closer to spawn = small/rare patches (safe clearing zone).
 				# Further out = larger, denser patches (reward exploration).
-				var dist        := Vector2(wx, wy).length()
-				var dist_factor := clamp(dist / SCALE_DISTANCE, 0.0, 1.0)
-				var bonus       := dist_factor * SCALE_AMOUNT
+				var dist: float        = Vector2(wx, wy).length()
+				var dist_factor: float = clamp(dist / SCALE_DISTANCE, 0.0, 1.0)
+				var bonus: float       = dist_factor * SCALE_AMOUNT
 
 				var iron  := iron_noise.get_noise_2d(wx, wy)
 				var coal  := coal_noise.get_noise_2d(wx, wy)
