@@ -67,17 +67,18 @@ func _on_tick(tick: int) -> void:
 		_finish_mining()
 
 func _finish_mining() -> void:
-	var type     := _get_type(target_cell)
-	var item_id: String = TileTypes.DROP.get(type, "")
+	var type: TileTypes.Type = _get_type(target_cell)
+	var item_id: String      = TileTypes.DROP.get(type, "")
 
-	# Remove the tile — replace with ground
-	_tile_map.set_cell(target_cell, 0, Vector2i(0, 0))  # source 0 = GROUND
-
+	# Resource nodes are infinite — tile stays, just yield the item
 	if item_id != "":
 		Inventory.add_item(item_id, 1)
 		tile_mined.emit(target_cell, item_id)
 
-	stop_mining()
+	# Reset progress and keep mining automatically
+	_hits_done    = 0
+	_tick_counter = 0
+	mining_hit.emit(target_cell, 0, _hits_needed)  # resets the progress ring
 
 func _get_type(cell: Vector2i) -> TileTypes.Type:
 	var src := _tile_map.get_cell_source_id(cell)
