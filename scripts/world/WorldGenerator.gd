@@ -70,14 +70,11 @@ func _make_tile_texture(type: TileTypes.Type) -> ImageTexture:
 		TileTypes.Type.WATER:
 			_draw_water(img)
 		TileTypes.Type.STONE:
-			_draw_ore(img, Color(0.47, 0.62, 0.35), Color(0.58, 0.58, 0.58),
-					  Color(0.72, 0.72, 0.72))
+			_draw_ore(img, Color(0.58, 0.58, 0.60), Color(0.72, 0.72, 0.74))
 		TileTypes.Type.IRON:
-			_draw_ore(img, Color(0.47, 0.62, 0.35), Color(0.72, 0.42, 0.18),
-					  Color(0.92, 0.65, 0.30))
+			_draw_ore(img, Color(0.58, 0.22, 0.06), Color(0.88, 0.48, 0.15))
 		TileTypes.Type.COAL:
-			_draw_ore(img, Color(0.47, 0.62, 0.35), Color(0.15, 0.15, 0.15),
-					  Color(0.35, 0.35, 0.38))
+			_draw_ore(img, Color(0.14, 0.14, 0.16), Color(0.32, 0.32, 0.35))
 
 	return ImageTexture.create_from_image(img)
 
@@ -104,30 +101,50 @@ func _draw_water(img: Image) -> void:
 		img.set_pixel(x, y2 + 1, light)
 	_draw_border(img, base)
 
-func _draw_ore(img: Image, ground: Color, ore_dark: Color, ore_light: Color) -> void:
-	img.fill(ground)
-	# Draw 4 ore nuggets at fixed positions for consistent look
+func _draw_ore(img: Image, ore_dark: Color, ore_light: Color) -> void:
+	# Ore tiles use the ore colour as the base — no green ground peeking through
+	img.fill(ore_dark)
+
+	# Six larger 7×7 nuggets spread across the full tile
 	var nuggets: Array = [
-		[6, 6], [18, 5], [7, 18], [20, 19]
+		[2,  2],  [13, 1],  [22, 2],
+		[1, 14],  [13,14],  [22,14],
 	]
 	for n in nuggets:
 		var ox: int = n[0]
 		var oy: int = n[1]
-		# 5×5 nugget with rounded corners and highlight
-		for dx in range(5):
-			for dy in range(5):
-				# Skip corners for rounded look
-				if (dx == 0 or dx == 4) and (dy == 0 or dy == 4):
+		for dx in range(7):
+			for dy in range(7):
+				# Round corners
+				var corner := (dx == 0 or dx == 6) and (dy == 0 or dy == 6)
+				if corner:
 					continue
-				var c := ore_light if (dx == 1 and dy == 1) else ore_dark
+				# Top-left pixel is highlight, rest is mid-tone between dark and light
+				var c: Color
+				if dx == 1 and dy == 1:
+					c = ore_light
+				elif dx <= 2 and dy <= 2:
+					c = ore_dark.lerp(ore_light, 0.5)
+				else:
+					c = ore_dark.lerp(ore_light, 0.25)
 				img.set_pixel(ox + dx, oy + dy, c)
-	# Small pickaxe indicator: top-right corner (24,4) — three pixels
-	var icon := Color(1.0, 1.0, 0.85, 0.85)
-	img.set_pixel(25, 4, icon)
+
+	# Thin gap lines between nugget rows/columns (ground-coloured cracks)
+	var crack := ore_dark.darkened(0.3)
+	for i in range(1, 31):
+		img.set_pixel(i, 10, crack)
+		img.set_pixel(i, 22, crack)
+		img.set_pixel(10, i, crack)
+		img.set_pixel(21, i, crack)
+
+	# Mineable indicator: small bright dot cluster top-right
+	var icon := Color(1.0, 1.0, 0.75, 0.9)
+	img.set_pixel(27, 4, icon)
+	img.set_pixel(28, 5, icon)
 	img.set_pixel(26, 5, icon)
 	img.set_pixel(27, 6, icon)
-	img.set_pixel(24, 5, icon)
-	_draw_border(img, ground)
+
+	_draw_border(img, ore_dark)
 
 func _draw_border(img: Image, base: Color) -> void:
 	var border := base.darkened(0.22)
