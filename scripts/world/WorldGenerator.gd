@@ -44,6 +44,9 @@ func _build_tileset() -> void:
 		source.texture_region_size = Vector2i(TILE_SIZE, TILE_SIZE)
 		source.create_tile(Vector2i(0, 0))
 
+		# Add to TileSet FIRST so TileData knows about physics layers
+		_source_ids[type] = ts.add_source(source)
+
 		if not TileTypes.PASSABLE[type]:
 			var td: TileData = source.get_tile_data(Vector2i(0, 0), 0)
 			var half := TILE_SIZE / 2.0
@@ -53,8 +56,6 @@ func _build_tileset() -> void:
 			])
 			td.add_collision_polygon(0)
 			td.set_collision_polygon_points(0, 0, poly)
-
-		_source_ids[type] = ts.add_source(source)
 
 	_tile_map.tile_set = ts
 
