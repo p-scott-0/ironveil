@@ -3,25 +3,29 @@ extends Node
 const SAVE_PATH := "user://savegame.json"
 
 func save() -> void:
+	var player: Node = get_tree().get_first_node_in_group("player")
+	var pos: Dictionary = {}
+	if player:
+		pos = {"x": player.global_position.x, "y": player.global_position.y}
 	var data := {
-		"inventory": Inventory.items,
-		"player_position": _vec2_to_dict(get_tree().get_first_node_in_group("player").global_position),
+		"inventory": Inventory.get_save_data(),
+		"player_position": pos,
 		"tick": GameManager.tick_count,
 	}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	file.store_string(JSON.stringify(data))
+	if file:
+		file.store_string(JSON.stringify(data))
 
 func load_save() -> bool:
 	if not FileAccess.file_exists(SAVE_PATH):
 		return false
 	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
-	var data: Dictionary = JSON.parse_string(file.get_as_text())
-	Inventory.items = data.get("inventory", {})
+	if not file:
+		return false
+	var result: Variant = JSON.parse_string(file.get_as_text())
+	if not result is Dictionary:
+		return false
+	var data: Dictionary = result
+	Inventory.load_save_data(data.get("inventory", {}))
 	GameManager.tick_count = data.get("tick", 0)
 	return true
-
-func _vec2_to_dict(v: Vector2) -> Dictionary:
-	return {"x": v.x, "y": v.y}
-
-func _dict_to_vec2(d: Dictionary) -> Vector2:
-	return Vector2(d.x, d.y)

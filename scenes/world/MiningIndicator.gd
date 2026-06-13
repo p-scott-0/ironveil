@@ -16,7 +16,7 @@ func _ready() -> void:
 
 func _on_started(tile_pos: Vector2i, _type: int) -> void:
 	# Snap to the centre of the mined tile (world space)
-	var tile_map: TileMapLayer = get_parent().get_node("TileMapLayer")
+	var tile_map: TileMapLayer = get_parent().get_node("TerrainMap")
 	global_position = tile_map.map_to_local(tile_pos)
 	_progress = 0.0
 	visible   = true

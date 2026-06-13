@@ -72,7 +72,7 @@ func _finish_mining() -> void:
 
 	# Resource nodes are infinite — tile stays, just yield the item
 	if item_id != "":
-		Inventory.add_item(item_id, 1)
+		Inventory.add_to_backpack(item_id, 1)
 		tile_mined.emit(target_cell, item_id)
 
 	# Reset progress and keep mining automatically
